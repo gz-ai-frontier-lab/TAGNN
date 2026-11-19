@@ -1,0 +1,34 @@
+
+python train.py --dataset Cora --model DGCNNGraphormer_noNeigFeat --use_feature --use_feature_GT --grpe_cross --use_len_spd --use_num_spd --use_cnb_jac --use_cnb_aa --use_cnb_ra --hidden_channels 128 --num_layers 2 --num_heads 4 --mlp_hidden_channels 256 --num_hops 2 --max_nodes_per_hop 200 --batch_size 64 --lr 5e-4 --epochs 15 --seed 42 --dropout 0.5 --weight_decay 1e-5 --patience 20 --rst_layers 2 --use_valedges_as_input --train_percent 100 --val_percent 100 --test_percent 100 --dynamic_train --dynamic_val --dynamic_test --device 0 --num_workers 0
+Total number of parameters is 2008648
+SortPooling k is set to 0.6
+Run: 01, Epoch: 01, Loss: 0.4186, AUC 88.32%, Valid: AUC 92.68%, Test: AUC 90.71%
+Run: 01, Epoch: 02, Loss: 0.2918, AUC 94.70%, Valid: AUC 91.45%, Test: AUC 89.07%
+Run: 01, Epoch: 03, Loss: 0.1891, AUC 97.77%, Valid: AUC 89.41%, Test: AUC 87.00%
+Run: 01, Epoch: 04, Loss: 0.1470, AUC 98.63%, Valid: AUC 89.35%, Test: AUC 87.25%
+Run: 01, Epoch: 05, Loss: 0.1050, AUC 99.29%, Valid: AUC 88.58%, Test: AUC 86.95%
+Run: 01, Epoch: 06, Loss: 0.0870, AUC 99.50%, Valid: AUC 89.96%, Test: AUC 87.82%
+Run: 01, Epoch: 07, Loss: 0.0693, AUC 99.69%, Valid: AUC 89.57%, Test: AUC 87.53%
+Run: 01, Epoch: 08, Loss: 0.0673, AUC 99.69%, Valid: AUC 89.17%, Test: AUC 87.61%
+Run: 01, Epoch: 09, Loss: 0.0479, AUC 99.83%, Valid: AUC 87.29%, Test: AUC 86.83%
+Run: 01, Epoch: 10, Loss: 0.0460, AUC 99.85%, Valid: AUC 87.84%, Test: AUC 87.06%
+Run: 01, Epoch: 11, Loss: 0.0385, AUC 99.89%, Valid: AUC 88.27%, Test: AUC 87.57%
+Run: 01, Epoch: 12, Loss: 0.0375, AUC 99.90%, Valid: AUC 88.10%, Test: AUC 87.39%
+Run: 01, Epoch: 13, Loss: 0.0301, AUC 99.93%, Valid: AUC 88.34%, Test: AUC 87.28%
+Run: 01, Epoch: 14, Loss: 0.0397, AUC 99.88%, Valid: AUC 88.69%, Test: AUC 87.57%
+Run: 01, Epoch: 15, Loss: 0.0316, AUC 99.93%, Valid: AUC 88.34%, Test: AUC 87.37%
+Run: 01, Epoch: 01, Final Valid: AUC 92.68%, Final Test: AUC 93.03%
+AUC
+Run 01:
+Highest Valid: 92.68
+Highest Eval Point: 1
+Final valid: 92.68
+ Final Test: 93.03
+runs 0-0
+All runs:
+Final Valid: 92.68 ± nan
+ Final Test: 93.03 ± nan
+AUC
+All runs:
+Final Valid: 92.68 ± nan
+ Final Test: 93.03 ± nan

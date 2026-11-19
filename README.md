@@ -55,3 +55,16 @@ or
 ### Note!
 
 Due to the institutional intellectual property rights (IPR) and confidentiality agreements, the trained model weights are not publicly available at this stage. However, all analysis scripts, preprocessing codes, and implementation details required to reproduce the experimental results have been deposited in a public repository.
+
+Ascend NPU 迁移验证（昇腾 910B3 / Atlas 800T A2）
+---------------------------------------------------
+
+本仓代码已完成昇腾 910B3 单卡迁移并在 NPU 上实测通过（Cora 链接预测，`DGCNNGraphormer_noNeigFeat`）：
+
+- [`ascend_migration.patch`](ascend_migration.patch)：统一迁移补丁，共 16 处（11 处 NPU 迁移兼容 + 5 处论文保真与评测协议修正），与仓内 `models.py` / `train.py` / `utils.py` 当前代码完全对应。
+- [`train_log/NPU/`](train_log/NPU/)：双口径 NPU 实测日志 —— 论文口径（e15，**Final Test AUC 93.03**）与代码仓默认口径（e40，Final Test AUC 90.10），每个口径含完整训练日志（`.log`）与逐 epoch 摘要（`.txt`）。
+- [`jupyter终端.log`](jupyter终端.log)：Pod 环境原始清点证据（npu-smi 24.1.0.3 / CANN 8.3.RC1 / 驱动 24.1.0.3 等）。
+
+> **完整验证交付**（面向陌生验证者的复现步骤、双口径启动脚本 `run_paper_protocol.sh` / `run_repo_default.sh`、16 处改动逐条说明与结果曲线图）见配套仓：[Ascend-SACT/TAGNNModel](https://atomgit.com/Ascend-SACT/TAGNNModel)。
+
+中文代码学习指南见 [TAGNN学习指导.md](TAGNN学习指导.md)（面向 AI Infra 新人，覆盖"跑通 → 读懂模型 → 讲清设计 → Infra 优化"四级目标）。

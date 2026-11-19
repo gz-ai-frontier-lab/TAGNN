@@ -1,0 +1,59 @@
+
+python train.py --dataset Cora --model DGCNNGraphormer_noNeigFeat --use_feature --use_feature_GT --grpe_cross --use_len_spd --use_num_spd --use_cnb_jac --hidden_channels 32 --num_layers 3 --num_heads 32 --batch_size 64 --lr 5e-4 --epochs 40 --seed 42 --train_percent 100 --val_percent 100 --test_percent 100 --dynamic_train --dynamic_val --dynamic_test --device 0 --num_workers 0
+Total number of parameters is 648804
+SortPooling k is set to 0.6
+Run: 01, Epoch: 01, Loss: 0.4564, AUC 85.14%, Valid: AUC 88.57%, Test: AUC 88.80%
+Run: 01, Epoch: 02, Loss: 0.3355, AUC 92.82%, Valid: AUC 90.77%, Test: AUC 89.32%
+Run: 01, Epoch: 03, Loss: 0.2062, AUC 97.39%, Valid: AUC 91.25%, Test: AUC 90.12%
+Run: 01, Epoch: 04, Loss: 0.1177, AUC 99.07%, Valid: AUC 91.46%, Test: AUC 90.36%
+Run: 01, Epoch: 05, Loss: 0.0733, AUC 99.62%, Valid: AUC 91.57%, Test: AUC 90.10%
+Run: 01, Epoch: 06, Loss: 0.0574, AUC 99.76%, Valid: AUC 90.19%, Test: AUC 89.44%
+Run: 01, Epoch: 07, Loss: 0.0425, AUC 99.86%, Valid: AUC 90.81%, Test: AUC 89.09%
+Run: 01, Epoch: 08, Loss: 0.0379, AUC 99.89%, Valid: AUC 90.16%, Test: AUC 88.82%
+Run: 01, Epoch: 09, Loss: 0.0277, AUC 99.94%, Valid: AUC 90.13%, Test: AUC 88.81%
+Run: 01, Epoch: 10, Loss: 0.0220, AUC 99.96%, Valid: AUC 90.39%, Test: AUC 89.48%
+Run: 01, Epoch: 11, Loss: 0.0220, AUC 99.97%, Valid: AUC 90.03%, Test: AUC 89.14%
+Run: 01, Epoch: 12, Loss: 0.0174, AUC 99.98%, Valid: AUC 89.78%, Test: AUC 89.29%
+Run: 01, Epoch: 13, Loss: 0.0198, AUC 99.97%, Valid: AUC 89.85%, Test: AUC 88.89%
+Run: 01, Epoch: 14, Loss: 0.0187, AUC 99.97%, Valid: AUC 90.40%, Test: AUC 89.28%
+Run: 01, Epoch: 15, Loss: 0.0196, AUC 99.97%, Valid: AUC 90.74%, Test: AUC 89.09%
+Run: 01, Epoch: 16, Loss: 0.0102, AUC 99.99%, Valid: AUC 90.78%, Test: AUC 89.48%
+Run: 01, Epoch: 17, Loss: 0.0122, AUC 99.99%, Valid: AUC 90.81%, Test: AUC 89.04%
+Run: 01, Epoch: 18, Loss: 0.0126, AUC 99.98%, Valid: AUC 90.79%, Test: AUC 89.49%
+Run: 01, Epoch: 19, Loss: 0.0159, AUC 99.98%, Valid: AUC 89.73%, Test: AUC 88.40%
+Run: 01, Epoch: 20, Loss: 0.0095, AUC 99.99%, Valid: AUC 90.34%, Test: AUC 88.80%
+Run: 01, Epoch: 21, Loss: 0.0138, AUC 99.98%, Valid: AUC 89.14%, Test: AUC 88.26%
+Run: 01, Epoch: 22, Loss: 0.0105, AUC 99.99%, Valid: AUC 89.25%, Test: AUC 88.93%
+Run: 01, Epoch: 23, Loss: 0.0107, AUC 99.99%, Valid: AUC 89.36%, Test: AUC 88.61%
+Run: 01, Epoch: 24, Loss: 0.0104, AUC 99.99%, Valid: AUC 89.01%, Test: AUC 89.00%
+Run: 01, Epoch: 25, Loss: 0.0105, AUC 99.99%, Valid: AUC 89.53%, Test: AUC 89.02%
+Run: 01, Epoch: 26, Loss: 0.0143, AUC 99.98%, Valid: AUC 89.21%, Test: AUC 88.50%
+Run: 01, Epoch: 27, Loss: 0.0085, AUC 99.99%, Valid: AUC 89.19%, Test: AUC 88.05%
+Run: 01, Epoch: 28, Loss: 0.0068, AUC 99.99%, Valid: AUC 89.24%, Test: AUC 88.44%
+Run: 01, Epoch: 29, Loss: 0.0073, AUC 100.00%, Valid: AUC 89.03%, Test: AUC 88.07%
+Run: 01, Epoch: 30, Loss: 0.0115, AUC 99.99%, Valid: AUC 89.36%, Test: AUC 89.35%
+Run: 01, Epoch: 31, Loss: 0.0109, AUC 99.99%, Valid: AUC 88.71%, Test: AUC 88.74%
+Run: 01, Epoch: 32, Loss: 0.0112, AUC 99.99%, Valid: AUC 87.69%, Test: AUC 88.56%
+Run: 01, Epoch: 33, Loss: 0.0054, AUC 100.00%, Valid: AUC 88.26%, Test: AUC 88.63%
+Run: 01, Epoch: 34, Loss: 0.0071, AUC 100.00%, Valid: AUC 88.12%, Test: AUC 88.37%
+Run: 01, Epoch: 35, Loss: 0.0069, AUC 99.99%, Valid: AUC 89.57%, Test: AUC 88.89%
+Run: 01, Epoch: 36, Loss: 0.0067, AUC 100.00%, Valid: AUC 88.13%, Test: AUC 87.72%
+Run: 01, Epoch: 37, Loss: 0.0096, AUC 99.98%, Valid: AUC 90.01%, Test: AUC 89.52%
+Run: 01, Epoch: 38, Loss: 0.0091, AUC 99.99%, Valid: AUC 89.12%, Test: AUC 89.02%
+Run: 01, Epoch: 39, Loss: 0.0077, AUC 100.00%, Valid: AUC 87.89%, Test: AUC 87.88%
+Run: 01, Epoch: 40, Loss: 0.0087, AUC 99.99%, Valid: AUC 89.31%, Test: AUC 88.78%
+Run: 01, Epoch: 05, Final Valid: AUC 91.57%, Final Test: AUC 90.10%
+AUC
+Run 01:
+Highest Valid: 91.57
+Highest Eval Point: 5
+Final valid: 91.57
+ Final Test: 90.10
+runs 0-0
+All runs:
+Final Valid: 91.57 ± nan
+ Final Test: 90.10 ± nan
+AUC
+All runs:
+Final Valid: 91.57 ± nan
+ Final Test: 90.10 ± nan
