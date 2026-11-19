@@ -8,7 +8,16 @@ from torch_geometric.nn import (GCNConv, SAGEConv, GINConv,
                                 global_sort_pool, global_add_pool, global_mean_pool)
 from torch_geometric.data import Data
 from graphormer.model import Graphormer
-import ngnn_models
+try:
+    # NOTE(ascend): ngnn_models pulls in dgl, which may be absent or
+    # ABI-incompatible with the installed torch (dgl can even raise
+    # FileNotFoundError for a missing per-torch graphbolt library).
+    # Only the NGNN* model classes (used via --ngnn_code) reference it,
+    # and only at __init__ time, so a missing module does not affect
+    # Cora/ogbl-vessel runs.
+    import ngnn_models
+except (ImportError, OSError):
+    ngnn_models = None
 import pdb
 
 class NGNN_GCNConv(torch.nn.Module):
@@ -1224,13 +1233,16 @@ class DGCNNGraphormer(torch.nn.Module):
 class DGCNNGraphormer_noNeigFeat(torch.nn.Module):
     def __init__(self, args, hidden_channels, num_layers, max_z, k=0.6, train_dataset=None,
                  GNN=GCNConv, NGNN=NGNN_GCNConv, use_feature=False, use_feature_GT=True,
-                 node_embedding=None, readout_type=False):
+                 node_embedding=None, readout_type=False, dropout=0.5):
         super(DGCNNGraphormer_noNeigFeat, self).__init__()
 
         self.use_feature = use_feature
         self.use_feature_GT = use_feature_GT
         self.node_embedding = node_embedding
         self.readout_type = readout_type
+        # NOTE(ascend): paper protocol applies dropout 0.5 in the GNN module
+        # (the class previously had no dropout at all, causing early overfit).
+        self.dropout = dropout
 
         if k <= 1:  # Transform percentile to number.
             if train_dataset is None:
@@ -1300,7 +1312,7 @@ class DGCNNGraphormer_noNeigFeat(torch.nn.Module):
         self.lin2 = Linear(mlp_hidden_channels, 1)
 
         input_dim = train_dataset.num_features if use_feature_GT else hidden_channels
-        self.graphormer = Graphormer(n_layers=3,
+        self.graphormer = Graphormer(n_layers=args.rst_layers,  # NOTE(ascend): paper RST = 2 stacked blocks; upstream hardcoded 3
                                      input_dim=input_dim,
                                      num_heads=args.num_heads,
                                      hidden_dim=mlp_hidden_channels,
@@ -1341,11 +1353,14 @@ class DGCNNGraphormer_noNeigFeat(torch.nn.Module):
         for conv in self.convs:
             hs += [torch.tanh(conv(hs[-1], edge_index, edge_weight))]
         h = torch.cat(hs[1:], dim=-1)  # h: [num_nodes, 3*input_dim+1] [2747, 97]
+        # NOTE(ascend): dropout per paper protocol (GNN module).
+        h = F.dropout(h, p=self.dropout, training=self.training)
 
         # linear -> concat -> linear
         h_feature = F.relu(self.lin01(ffn_feat))  # FFN单独编码feature
         h = torch.cat((h, h_feature), dim=1)
         h = F.relu(self.lin02(h))
+        h = F.dropout(h, p=self.dropout, training=self.training)
 
         _, center_indices = np.unique(batch.cpu().numpy(), return_index=True)
         if self.readout_type:

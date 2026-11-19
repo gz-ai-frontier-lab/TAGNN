@@ -15,6 +15,19 @@ import numpy as np
 from sklearn.metrics import roc_auc_score, confusion_matrix, accuracy_score, precision_score, recall_score, f1_score
 import scipy.sparse as ssp
 import torch
+try:
+    import torch_npu  # noqa: F401  # NOTE(ascend): registers torch.npu backend; no-op on CPU/GPU machines
+except ImportError:
+    pass
+# NOTE(ascend): PyTorch>=2.6 flips torch.load default to weights_only=True,
+# which breaks loading pickled PyG dataset files (Planetoid/SEAL caches) and
+# checkpoints. Restore the <=2.5 default; this repo only loads files it
+# produced itself.
+_orig_torch_load = torch.load
+def _torch_load_compat(f, *args, **kwargs):
+    kwargs.setdefault('weights_only', False)
+    return _orig_torch_load(f, *args, **kwargs)
+torch.load = _torch_load_compat
 from torch import Tensor
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import DataLoader
@@ -54,18 +67,39 @@ import os
 import sys
 import time
 
-import dgl
+try:
+    # NOTE(ascend): DGL is only used by the --ngnn_code path (citation2/ppa);
+    # Cora/ogbl-vessel runs do not touch it. A missing or ABI-incompatible DGL
+    # (e.g. old dgl wheels vs a new torch — dgl may even raise FileNotFoundError
+    # for a missing per-torch graphbolt library) only disables that path.
+    import dgl
+    import torch
+    from dgl.data.utils import load_graphs, save_graphs
+    from dgl.dataloading import GraphDataLoader
+    from ogb.linkproppred import DglLinkPropPredDataset, Evaluator
+except (ImportError, OSError) as e:
+    print(f'[warn] dgl unavailable ({e}); --ngnn_code path disabled.')
+    dgl = None
 import torch
-from dgl.data.utils import load_graphs, save_graphs
-from dgl.dataloading import GraphDataLoader
-from ogb.linkproppred import DglLinkPropPredDataset, Evaluator
 from torch.nn import BCEWithLogitsLoss
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-import ngnn_models
-import ngnn_utils
-import wp_utils
+if dgl is not None:
+    import ngnn_models
+    import ngnn_utils
+else:
+    # ngnn_models/ngnn_utils import dgl.nn at module level; keep them out of
+    # sys.modules so the unguarded references below stay unreachable for Cora runs.
+    ngnn_models = None
+    ngnn_utils = None
+try:
+    # NOTE(ascend): wp_utils needs drnl.py, which is missing from this repo
+    # (it lives in the upstream SEAL codebase). Only the --wp_code path uses
+    # it, so a missing module only disables that path; Cora/ogbl runs are unaffected.
+    import wp_utils
+except ImportError as e:
+    print(f'[warn] wp_utils unavailable ({e}); --wp_code path disabled.')
 import seal18_utils
 
 
@@ -302,7 +336,12 @@ def train(num_datas):
             new_data = data.clone()
             new_data.x = x
             new_data.edge_weight = edge_weight
-            new_data.node_id = node_id
+            # NOTE(ascend): PyG>=2.x deletes an attribute when it is assigned
+            # None (PyG 1.x kept it); models read data.node_id unconditionally,
+            # so only re-assign when an embedding is actually used — the cloned
+            # batch already carries node_id.
+            if node_id is not None:
+                new_data.node_id = node_id
             logits = model(new_data)
             loss = BCEWithLogitsLoss()(logits.view(-1), data.y.to(torch.float))
             loss.backward()
@@ -373,7 +412,12 @@ def test_model(model, loader, num_datas):
             new_data = data.clone()
             new_data.x = x
             new_data.edge_weight = edge_weight
-            new_data.node_id = node_id
+            # NOTE(ascend): PyG>=2.x deletes an attribute when it is assigned
+            # None (PyG 1.x kept it); models read data.node_id unconditionally,
+            # so only re-assign when an embedding is actually used — the cloned
+            # batch already carries node_id.
+            if node_id is not None:
+                new_data.node_id = node_id
             logits = model(new_data)
             end = min(start + num_datas_in_batch, num_datas)
             y_pred[start:end] = logits.view(-1).cpu()
@@ -547,7 +591,9 @@ def test_multiple_models(models, loader, num_datas):
         new_data = data.clone()
         new_data.x = x
         new_data.edge_weight = edge_weight
-        new_data.node_id = node_id
+        # NOTE(ascend): PyG>=2.x deletes an attribute when it is assigned None.
+        if node_id is not None:
+            new_data.node_id = node_id
         end = min(start + num_datas_in_batch, num_datas)
         for i, model in enumerate(models):
             logits = model(new_data)
@@ -754,7 +800,10 @@ parser.add_argument(
 parser.add_argument(
     "--num_ngnn_layers", type=int, default=2, choices=[1, 2]
 )
-parser.add_argument("--dropout", type=float, default=0.0)
+parser.add_argument("--dropout", type=float, default=0.0)  # NOTE(ascend): paper protocol passes 0.5 explicitly
+parser.add_argument("--weight_decay", type=float, default=0.0)  # NOTE(ascend): paper protocol passes 1e-5 explicitly
+parser.add_argument("--patience", type=int, default=0)  # NOTE(ascend): paper early stopping patience=20; 0 disables
+parser.add_argument("--rst_layers", type=int, default=3)  # NOTE(ascend): paper RST = 2 stacked blocks; upstream hardcodes 3
 parser.add_argument(
     "--test_topk",
     type=int,
@@ -813,7 +862,8 @@ def seed_torch(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    dgl.seed(seed)
+    if dgl is not None:
+        dgl.seed(seed)
     os.environ['PYTHONHASHSEED'] = str(seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
@@ -848,6 +898,10 @@ if not args.keep_old:
     root_dir = './' if root_dir == '' else root_dir
     for sub_dir in ['', 'surel_gacc']:
         full_dir = os.path.join(root_dir, sub_dir)
+        # NOTE(ascend): 'surel_gacc' is not shipped in this repo; skip missing
+        # dirs instead of crashing the whole run (backup is best-effort only).
+        if not os.path.isdir(full_dir):
+            continue
         files = [f for f in os.listdir(full_dir) if
                  os.path.isfile(os.path.join(full_dir, f)) and os.path.splitext(f)[1] in ['.py", ".c", ".cpp']]
         backup_dir = os.path.join(backup_root_dir, sub_dir)
@@ -904,7 +958,16 @@ elif args.eval_metric == 'auc':
 
 # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # device = torch.device('cuda:0')
-device = 'cpu' if args.device == -1 or not torch.cuda.is_available() else f'cuda:{args.device}'
+# NOTE(ascend): prefer Ascend NPU when torch_npu is available; fall back to
+# CUDA / CPU as before. `--device -1` still forces CPU (baseline runs).
+if args.device == -1:
+    device = 'cpu'
+elif hasattr(torch, 'npu') and torch.npu.is_available():
+    device = f'npu:{args.device}'
+elif torch.cuda.is_available():
+    device = f'cuda:{args.device}'
+else:
+    device = 'cpu'
 device = torch.device(device)
 
 if args.use_heuristic:
@@ -1053,9 +1116,20 @@ if not args.ngnn_code:
         val_edge_index = split_edge['valid']['edge'].t()
         if not directed:
             val_edge_index = to_undirected(val_edge_index)
-        data.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
-        val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
-        data.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+        # NOTE(ascend): OGB-correct protocol - val edges augment the graph ONLY for
+        # final-test subgraph extraction; train/valid evaluation (incl. best-val
+        # checkpoint selection) stays on the train-only graph so val remains honest
+        # and correlated with test. Upstream mutated `data` globally, which inflated
+        # valid AUC and decoupled it from test (measured: val 95.2 vs test 87.4).
+        data_full = cp.deepcopy(data)
+        data_full.edge_index = torch.cat([data.edge_index, val_edge_index], dim=-1)
+        # Planetoid (Cora/Citeseer/Pubmed) has no edge_weight attr; guard the concat
+        # so the val-edges-as-input protocol also works on classic datasets.
+        if getattr(data, 'edge_weight', None) is not None:
+            val_edge_weight = torch.ones([val_edge_index.size(1), 1], dtype=int)
+            data_full.edge_weight = torch.cat([data.edge_weight, val_edge_weight], 0)
+    else:
+        data_full = data
 
     print(get_dict_info(split_edge))
     print(f'data {data}')
@@ -1192,7 +1266,7 @@ if not args.ngnn_code:
     dataset_class = 'SEALDynamicDataset' if args.dynamic_test else 'SEALIterableDataset'
     final_test_dataset = eval(dataset_class)(
         path,
-        data,
+        data_full,
         split_edge,
         num_hops=args.num_hops,
         percent=args.final_test_percent,
@@ -1507,7 +1581,8 @@ for run in range(args.runs):
         model = DGCNNGraphormer_noNeigFeat(args, args.hidden_channels, args.num_layers, args.max_z,
                                            k=model_k, train_dataset=train_dataset,
                                            use_feature=args.use_feature, use_feature_GT=args.use_feature_GT,
-                                           node_embedding=emb, readout_type=args.readout_type).to(device)
+                                           node_embedding=emb, readout_type=args.readout_type,
+                                           dropout=args.dropout).to(device)
     elif args.model == 'NGNNDGCNNGraphormer':
         model = NGNNDGCNNGraphormer(args, args.hidden_channels, args.num_layers, args.max_z,
                                     k=model_k, feature_dim=graph.ndata["feat"].size(1),
@@ -1546,7 +1621,7 @@ for run in range(args.runs):
         torch.nn.init.xavier_uniform_(emb.weight)
         parameters += list(emb.parameters())
     lr = 2 * args.lr if args.scheduler else args.lr
-    optimizer = torch.optim.Adam(params=parameters, lr=lr)  # , weight_decay=0.002
+    optimizer = torch.optim.Adam(params=parameters, lr=lr, weight_decay=args.weight_decay)  # NOTE(ascend): paper weight decay 1e-5 wired into the main Adam
     scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2)
     total_params = sum(p.numel() for param in parameters for p in param)
     localtime = time.asctime(time.localtime(time.time()))
@@ -1581,7 +1656,8 @@ for run in range(args.runs):
                                                                           args.part_continue_from[-1])))
         )
         for p in model.ngnndgcnn.parameters(): p.requires_grad = False
-        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+        optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr,
+                                     weight_decay=args.weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(optimizer, T_0=2)
         start_epoch = 1001  # stage2的模型从1001开始
 
@@ -1694,6 +1770,9 @@ for run in range(args.runs):
         exit()
 
     # Training starts
+    # NOTE(ascend): early stopping state (see --patience; paper protocol patience=20)
+    best_val_auc = -1.0
+    stop_cnt = 0
     for epoch in range(start_epoch, start_epoch + args.epochs):
         # import pdb; pdb.set_trace()
         loss, train_result = train(len(train_dataset))  # {'AUC': 0.9661961285501943}
@@ -1704,6 +1783,22 @@ for run in range(args.runs):
             for key in loggers.keys():  # MRR
                 result = results[key]
                 loggers[key].add_result(run, result)
+            # NOTE(ascend): paper early stopping (patience=20, Sci Rep 16:17292) - track
+            # val AUC, stop after `patience` consecutive evals without improvement. The
+            # final test still reloads the best-val checkpoint, metrics are unchanged.
+            if args.patience > 0:
+                valid_auc = results['AUC'][0]
+                if valid_auc > best_val_auc:
+                    best_val_auc, stop_cnt = valid_auc, 0
+                else:
+                    stop_cnt += 1
+                if stop_cnt >= args.patience:
+                    stop_msg = (f'NOTE(ascend): early stopping at epoch {epoch} '
+                                f'(best val AUC {best_val_auc:.4f}, no improvement for {args.patience} evals)')
+                    print(stop_msg)
+                    with open(log_file, 'a') as f:
+                        print(stop_msg, file=f)
+                    break
 
             if epoch % args.log_steps == 0:
                 model_name = os.path.join(

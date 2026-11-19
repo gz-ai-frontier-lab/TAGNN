@@ -1,0 +1,10 @@
+# 本地运行产物（数据集 / checkpoint / CPU 临时探针日志不上仓）
+.zcode
+.idea/
+__pycache__/
+dataset/
+results/
+*.pth
+# train_log 仅保留 NPU 实测日志
+train_log/*
+!train_log/NPU/

@@ -13,7 +13,9 @@ import torch
 import torch_sparse
 from torch_sparse import spspmm, SparseTensor
 import torch_geometric
-from torch_geometric.data.sampler import Adj, EdgeIndex
+# NOTE(ascend): torch_geometric.data.sampler was removed in PyG 2.0.
+# Adj/EdgeIndex were imported here only and are not referenced anywhere else,
+# so the import is dropped (no functional change).
 from torch_geometric.data import DataLoader as PygDataLoader
 from torch_geometric.data import Data as PygData
 from torch_geometric.utils import (negative_sampling, add_self_loops,
@@ -390,7 +392,9 @@ def extract_enclosing_subgraphs_tensor(link_index, A_ssp: ssp.csr_matrix, A: tor
     return data_list
 
 
-def do_edge_split(dataset, fast_split=False, val_ratio=0.05, test_ratio=0.1, neg_ratio=1):
+def do_edge_split(dataset, fast_split=False, val_ratio=0.1, test_ratio=0.1, neg_ratio=1):
+    # NOTE(ascend): val_ratio 0.05 -> 0.1 to match the paper protocol (80/10/10
+    # edge split); the original code default (85/5/10) deviates from the paper.
     data = dataset[0]
     random.seed(234)
     torch.manual_seed(234)
