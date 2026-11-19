@@ -1,17 +1,17 @@
-# TAGNN 学习指导(面向 AI Infra 新人)
+# PyG 框架 TAGNN(链路预测)模型:从入门到精通
 
-> **适用对象**:刚接触图学习/链路预测的 AI Infra 工程师。目标是:不仅能跑通 TAGNN,还能讲清"每一行代码为什么存在",并具备对它做性能分析和改造的能力。
->
-> **对应论文**:[TAGNN: Topology-aware Graph Neural Network Framework for Link Prediction](https://www.nature.com/articles/s41598-026-48184-0), *Scientific Reports* 16:17292 (2026)。
+TAGNN(Topology-aware Graph Neural Network)是一个用于链路预测的图神经网络框架,发表于 *Scientific Reports*([论文链接](https://www.nature.com/articles/s41598-026-48184-0),2026)。它的代码以 PyTorch Geometric 为主线框架——这也是本指南的讲解主线;仓库里另有一条 DGL 实现路径(`ngnn_code`,citation2/ppa 两个数据集在用),文中会作为对照出现。
+
+这份指南想带你走完一条完整的路径:从跑通第一条链路预测命令开始,到读懂数据流水线和模型源码,再到理解"每一行代码为什么这样写",最后能动手做消融、做性能分析与改造。全程只假设你熟悉 PyTorch,不需要图学习背景。
 
 **如何使用本指南**
 
 - **只求能跑通**:读第 1、2、3 章 + 第 9.4 节 + 第 11 章练习 1。
 - **要读懂模型**:按顺序读完第三、四部分,配合第 11 章练习 2(pdb 追形状)。
 - **要讲清设计/做答辩**:读第五部分(设计动机),论文↔代码逐条对照。
-- **要做 Infra 优化**:直接跳第七部分,再回头补数据流水线细节。
+- **要做性能调优/工程改造**:直接跳第七部分,再回头补数据流水线细节。
 
-每章末尾有**思考题**,答案都能在前文或代码里找到,建议做完再前进。
+多数章节末尾附有**思考题**,答案都能在前文或代码里找到,建议做完再前进。
 
 ---
 
@@ -45,7 +45,7 @@
 | SPD | 直接连通性 | $\mathrm{dist}(u, v)$ | `--use_len_spd` |
 | SPN | 最短路径的条数(连通鲁棒性) | $\lvert \{ P : P \text{ 是 } u \to v \text{ 最短路} \} \rvert$ | `--use_num_spd` |
 
-**局限**:每个启发式只是一个标量,互相独立、无法与节点内容特征(如论文文本)融合,也无法端到端学习。这正好为"用神经网络学组合"留下空间——TAGNN 的做法不是发明新的启发式,而是**把这 5 个数喂进注意力机制让模型自己学权重**(第 6 章)。
+**局限**:每个启发式只是一个标量,互相独立、无法与节点内容特征(如论文文本)融合,也无法端到端学习。这正好为"用神经网络学组合"留下空间——TAGNN 的做法不是发明新的启发式,而是**把这 5 个特征开关对应的结构量做成可学习的注意力偏置,让模型自己学组合权重**(第 6 章)。
 
 ### 1.3 表示学习方法的三步演进
 
@@ -79,7 +79,7 @@
 
 **关键消融**(第 8 章逐条展开):去邻居特征**全部 6 个数据集都涨**(0.24–1.34 pp);去掉 RST 在 ogbl-vessel 掉 12.17 pp;去掉 GNN 在 ogbl-ppa 掉 29.76 pp——双分支缺一不可。
 
-**思考题**:RST 只看 2 个目标节点,信息量会不会太少?它的"结构信息"是从哪里来的?(答案在第 4.5/6.4 节:启发式是在整个包围子图上算好再喂给它的。)
+**思考题**:RST 只看 2 个目标节点,信息量会不会太少?它的"结构信息"是从哪里来的?(答案在第 4.5 节:启发式是在整个包围子图上算好、再浓缩成 pair 特征喂给它的。)
 
 ---
 
@@ -110,7 +110,7 @@ TAGNN/
 
 ### 3.2 三条代码路径
 
-`train.py:1047` 开始按 flag 分叉,新人只需关注前两条:
+`train.py:1047` 开始按 flag 分叉,先关注前两条即可:
 
 | 路径 | 触发条件 | 框架栈 | 数据集类 | 模型来源 | README 用于 |
 |---|---|---|---|---|---|
@@ -194,7 +194,7 @@ flowchart LR
 3. 取 $A[\text{nodes}][:, \text{nodes}]$ 导出子图邻接阵,**并把 `subgraph[0,1]`、`subgraph[1,0]` 清零——删掉目标边本身**(否则模型直接"背答案");
 4. `enclose_index`(utils.py:77)是 tensor 加速版:只保留两端都在 `nodes` 里的边并重映射列号。
 
-**为什么只取 $k$ 跳?** DRNL 标签在 $k$ 跳外全是"无穷远",信息量为 0;限定 $k$ 用 $O(\text{子图})$ 换 $O(\text{全网})$ 的可行性。vessel 大度数节点多,`max_nodes_per_hop` 是防止单样本子图上万的保险丝。
+**为什么只取 $k$ 跳?** DRNL 标签在 $k$ 跳外全是"无穷远",信息量为 0;限定 $k$ 也把开销从 $O(\text{全网})$ 降到 $O(\text{子图})$。vessel 大度数节点多,`max_nodes_per_hop` 是防止单样本子图上万的保险丝。
 
 ### 4.3 DRNL 标注:`drnl_node_labeling`(utils.py:259)
 
@@ -254,7 +254,7 @@ data.pair_attn_bias = zeros([1, 3, 3])   # 3 = 2 节点 + 1 个 graph token
 ### 4.6 组 batch
 
 - **sieg 路径**:PyG `DataLoader` 默认 collate,`pair_*` 字段按第 0 维拼接 → $[B,2,2]$、$[B,3,3]$ 等,天然正确。
-- **ngnn 路径**:DGL 把子图 batch 成大图,但**自定义属性不会跟着 `.to(device)` 走**,所以 `ogbl_collate_fn`(train.py:1413)手工拼 pair 字段、`train()`(train.py:300-319)手工逐字段 `.to(device)`——这是 DGL+自定义属性的经典坑,新人排查"字段在 CPU 上报错"时先看这里。
+- **ngnn 路径**:DGL 把子图 batch 成大图,但**自定义属性不会跟着 `.to(device)` 走**,所以 `ogbl_collate_fn`(train.py:1413)手工拼 pair 字段、`train()`(train.py:300-319)手工逐字段 `.to(device)`——这是 DGL+自定义属性的经典坑,排查"字段在 CPU 上报错"时先看这里。
 - **full_graphormer 路径**:子图节点数不一,`graphormer/collator.py` 手工 padding:attn_bias 的 pad 区填 $-\infty$(softmax 后权重为 0),特征/位置 pad 后 **+1**(0 留给 padding embedding,`padding_idx=0`)。
 
 **思考题**
@@ -301,6 +301,8 @@ flowchart TB
 ## 第 5 章 GNN 分支:邻域结构编码
 
 ### 5.1 模型动物园总览(models.py)
+
+`models.py` 是一个"模型动物园":既有 SEAL 风格的基线,也有逐步叠加出论文主模型的消融变体。下表按论文角色分组,类名后的括号内是定义行号:
 
 | 类 | 定位 | 论文角色 |
 |---|---|---|
@@ -384,7 +386,7 @@ _, center_indices = np.unique(batch.cpu().numpy(), return_index=True)   # 每图
 x = x[center_indices] * x[center_indices + 1]     # h_src ⊙ h_dst 逐元素乘
 ```
 
-乘法是对称双线性:正样本(目标间拓扑关联强)倾向得到同号大值。这一"取两个中心点"的模式在所有 *Graphormer 里也复用(h_src⊙h_dst),是贯穿全仓库的第二个不变量。
+乘法是对称双线性:正样本(目标间拓扑关联强)倾向得到同号大值。这一"取两个中心点"的模式在所有 *Graphormer 里也复用(h_src⊙h_dst)——它是贯穿全仓库的又一不变量(第一个是 4.2 节的"目标节点固定在 0、1 位")。
 
 **思考题**
 1. `global_sort_pool` 的 $k$ 取太大/太小分别会怎样?(太大:噪声节点混入+计算量;太小:大子图信息截断,且 dense_dim 变小。)
@@ -530,7 +532,7 @@ $$
 
 ## 第 8 章 为什么这样设计
 
-> 本章每条设计都给出:动机 → 代码落点 → 论文证据(消融/对照)。这是答辩/评审最常被问的一章。
+> 本章每条设计都给出:动机 → 代码落点 → 论文证据(消融/对照)。这是最常被追问、也最能检验理解深度的一章。
 
 ### 8.1 为什么丢邻居特征?
 
@@ -543,13 +545,13 @@ $$
 - **动机**:全子图 Graphormer 对 $\le 200$ 节点做全对注意力,其中绝大部分位置是"非目标节点互相看"——既贵又(按论文论证)引入噪声。TAGNN 把注意力对象缩到 $\{\mathrm{src}, \mathrm{dst}, \text{graph token}\}$,把"子图结构"改由启发式特征**离线浓缩**后注入。
 - **代码落点**:preprocess 的 $[2,2]$ pair 矩阵(4.5)+ Graphormer $N=2$(6 章)+ `preprocess_full` 作为"全图版"对照组。
 - **论文证据**:与全连接 Transformer 基线(FCT)相比快 10–16 倍,FCT 在大 OGB 图上直接 OOM;精度反而更高(比 Graphormer +0.23~4.58 pp)。
-- **Infra 视角**:这是典型的"**把二次方注意力换成线性预处理 + 常数注意力**"的架构级省钱方案。每样本注意力 FLOPs 从 $O(n^2 d)$ 降到 $O(9d)$;代价是把计算搬到了 CPU 侧的 networkx(第 10.1 节分析这个新的瓶颈)。
+- **工程视角**:这是典型的"**把二次方注意力换成线性预处理 + 常数注意力**"的架构级省钱方案。每样本注意力 FLOPs 从 $O(n^2 d)$ 降到 $O(9d)$;代价是把计算搬到了 CPU 侧的 networkx(第 10.1 节分析这个新的瓶颈)。
 
 ### 8.3 为什么用启发式做位置编码,而不是 Laplacian PE / 随机游走 PE?
 
 - **动机**:Laplacian PE 等谱方法是"任务无关"的通用位置信号;启发式直接就是链路预测任务的**先验知识**(1.2 节),可解释、可分桶、无需特征分解。
 - **代码落点**:5 个 `--use_cnb_*` 开关;仓库同时保留 `--use_rpe`(随机游走 RPE,dataset.py:315)供对照——论文命令不用它。
-- **论文证据**:启发式显著优于 Laplacian PE(>2 pp);两者叠加几乎无增益。特征重要性:SPD 最关键(vessel 去掉掉 2.75 pp),其次 CN;SPD+CN+JI+AA 已恢复 >98% 性能。
+- **论文证据**:启发式显著优于 Laplacian PE(>2 pp);两者叠加几乎无增益。特征重要性:SPD 最关键(vessel 去掉后掉 2.75 pp),其次 CN;SPD+CN+JI+AA 已恢复 >98% 性能。
 
 ### 8.4 为什么双分支缺一不可?
 
@@ -578,7 +580,7 @@ $$
 - 损失:$\mathcal{L} = \mathrm{BCEWithLogits}$(train.py:324);
 - 优化器:`Adam(lr, weight_decay)`(train.py:1628),论文协议 weight decay $10^{-5}$(`--weight_decay`,CLI 默认 0);
 - 可选 `CosineAnnealingWarmRestarts(T_0=2)`(`--scheduler`,启用时 lr×2,train.py:1627);
-- 早停:`--patience`(CLI 默认 0 = 不启用;论文协议 20),按 **val AUC** 连续 20 个 eval 无提升即停(train.py:1793-1805);触发后最终测试仍回滚 best-val checkpoint,指标不受影响。
+- 早停:`--patience`(CLI 默认 0 = 不启用;论文协议 20),按 **val AUC** 连续 `patience` 个 eval 无提升即停(train.py:1793-1805);触发后最终测试仍回滚 best-val checkpoint,指标不受影响。
 
 ### 9.2 两段式评估(最重要也最易被误解)
 
@@ -597,7 +599,7 @@ flowchart TD
     During --> Final
 ```
 
-- **为什么 final_test 要把 val 边加进图?** OGB 官方榜单协议:测试时模型允许看到 val 边(图信息更充分)。实现上必须守住一条纪律(train.py:1119-1136):**val 边只进 `data_full`,且只有 final_test 用 `data_full`;训练期的 val 评估必须仍用纯 train 图**。否则 val 指标虚高、与 test 脱钩,best-val 选点就失去了依据——这是"评估协议泄漏"的经典案例,值得每个 Infra 人记住。
+- **为什么 final_test 要把 val 边加进图?** OGB 官方榜单协议:测试时模型允许看到 val 边(图信息更充分)。实现上必须守住一条纪律(train.py:1119-1136):**val 边只进 `data_full`,且只有 final_test 用 `data_full`;训练期的 val 评估必须仍用纯 train 图**。否则 val 指标虚高、与 test 脱钩,best-val 选点就失去了依据——这是"评估协议泄漏"的经典案例,值得记住。
 - best-val 选取:loggers 记录每个 epoch 的 (valid, test),`torch.topk` 取 valid 最大者(train.py:1855-1860);多指标时按均值选(train.py:1836-1850)。
 
 ### 9.3 指标
@@ -631,13 +633,13 @@ $$
 | batch / lr / epochs / seed | 64 / 5e-4 / 100 / 42 | `--batch_size 64 --lr 5e-4 --epochs 100 --seed 42` |
 | 划分 / 采样 | 80:10:10 / percent 全 100 | `--train_percent 100 --val_percent 100 --test_percent 100 --dynamic_*` |
 
-> 注意:README 历史命令与论文协议超参不一致(附录 A 逐项对照),按论文复现以本表为准;漏任何一个参数(尤其 `--dropout 0.5`)都会使结果对不齐论文窗口。
+> 注意:README 历史命令与论文协议超参不一致(附录 A 逐项对照),按论文复现以本表为准;漏任何一个参数(尤其 `--dropout 0.5`)都会使结果对不齐论文数值。
 
 **思考题**:如果训练期 val 用了 data_full(带 val 边),会出现什么症状?怎么从日志上发现?(val 虚高且与 test 无关;曲线形态:val 一路高走 test 平坦。)
 
 ---
 
-# 第七部分 AI Infra 深潜(深)
+# 第七部分 工程实践深潜(深)
 
 ## 第 10 章 性能、内存与工程
 
@@ -715,7 +717,7 @@ python train.py --dataset Cora --model DGCNNGraphormer_noNeigFeat \
 
 **练习 2|pdb 追一个 batch 的形状**(1h):在 `train()` 的 `logits = model(new_data)` 前打 `import pdb; pdb.set_trace()`,核对:`data.z` 长度=子图节点总数、`data.pair_x=[B,2,F]`、`data.pair_attn_bias=[B,3,3]`;进 models.py:1330 单步走完 5.2 的五个阶段。
 
-**练习 3|特征开关 mini 消融**(2h):论文协议命令下去掉 `--use_cnb_jac --use_cnb_aa --use_cnb_ra`,对比 best-val AUC;**记得清 `*_struct` 缓存**(10.5)。
+**练习 3|特征开关 mini 消融**(2h):在论文协议命令的基础上去掉 `--use_cnb_jac --use_cnb_aa --use_cnb_ra`,对比 best-val AUC;**记得清 `*_struct` 缓存**(10.5)。
 
 **练习 4|readout 0 vs 2**(1h):`--readout_type 2`,参数量与精度各变化多少?
 
@@ -733,7 +735,7 @@ python train.py --dataset Cora --model DGCNNGraphormer_noNeigFeat \
 
 ## A. README 三命令 vs 论文协议对照
 
-| 项 | vessel(README) | citation2(README) | ppa(README) | 论文协议(Cora 定版) |
+| 项 | vessel(README) | citation2(README) | ppa(README) | 论文协议(Cora) |
 |---|---|---|---|---|
 | model | DGCNNGraphormer_noNeigFeat | NGNNDGCNNGraphormer_noNeigFeat | NGNNDGCNNGraphormer_noNeigFeat | DGCNNGraphormer_noNeigFeat |
 | hidden / mlp | 128 / 128(默认) | 32(默认)/ 128(默认) | 96 / 128(默认) | 128 / 256 |
@@ -764,7 +766,7 @@ python train.py --dataset Cora --model DGCNNGraphormer_noNeigFeat \
 
 | 论文表述 | 代码落点 | 差异/注意 |
 |---|---|---|
-| 子图采样:2-hop ≤200 节点 | `--num_hops 2 --max_nodes_per_hop 200` | README 旧命令是 1-hop/100,复现窗口必须用论文协议 |
+| 子图采样:2-hop ≤200 节点 | `--num_hops 2 --max_nodes_per_hop 200` | README 旧命令是 1-hop/100,复现论文数值必须用论文协议参数 |
 | 邻域结构编码(GNN 模块) | `DGCNNGraphormer_noNeigFeat` / NGNN 版 | GCN 输入仅 DRNL 嵌入;特征 FFN 旁路注入 |
 | RSA 五启发式 CN/JI/AA/SPD/SPN | `--use_cnb_jac/aa --use_len_spd --use_num_spd`(+`--use_cnb_ra`) | 代码把 RA 也做成同等待遇(ppa 命令启用);CN 以公共邻居计算隐含存在于 Jaccard/AA/RA |
 | RST 注意力限目标对 → 线性复杂度 | preprocess 的 2 节点 pair 图 | — |
