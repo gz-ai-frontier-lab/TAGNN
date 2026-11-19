@@ -67,4 +67,4 @@ Ascend NPU 迁移验证（昇腾 910B3 / Atlas 800T A2）
 
 > **完整验证交付**（面向陌生验证者的复现步骤、双口径启动脚本 `run_paper_protocol.sh` / `run_repo_default.sh`、16 处改动逐条说明与结果曲线图）见配套仓：[Ascend-SACT/TAGNNModel](https://atomgit.com/Ascend-SACT/TAGNNModel)。
 
-中文代码学习指南见 [TAGNN学习指导.md](TAGNN学习指导.md)（面向 AI Infra 新人，覆盖"跑通 → 读懂模型 → 讲清设计 → Infra 优化"四级目标）。
+中文代码学习指南见 [PyG框架TAGNN链路预测模型从入门到精通.md](PyG框架TAGNN链路预测模型从入门到精通.md)（覆盖"跑通 → 读懂模型 → 讲清设计 → 性能调优"四级目标，多数章节附思考题与动手练习）。
